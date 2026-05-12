@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Bone Marrow Counter</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Simple styling -->
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 1rem;
+      background: #f5f5f5;
+      color: #333;
+    }
+    h1 {
+      margin-top: 0;
+      font-size: 1.4rem;
+    }
+    .app {
+      max-width: 900px;
+      margin: 0 auto;
+      background: #fff;
+      border-radius: 8px;
+      padding: 1rem 1.5rem 1.5rem;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    }
+    .summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-bottom: 1rem;
+      align-items: baseline;
+    }
+    .summary-item {
+      font-size: 0.95rem;
+    }
+    .summary-item strong {
+      font-weight: 600;
+    }
+    .cells {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    .cell-btn {
+      border: none;
+      border-radius: 6px;
+      padding: 0.5rem 0.6rem;
+      text-align: left;
+      cursor: pointer;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+      transition: transform 0.08s ease, box-shadow 0.08s ease, opacity 0.12s ease;
+      font-size: 0.85rem;
+    }
+    .cell-btn span.label {
+      font-weight: 600;
+    }
+    .cell-btn span.meta {
+      font-size: 0.78rem;
+      opacity: 0.9;
+    }
+    .cell-btn.flash {
+      transform: scale(1.04);
+      box-shadow: 0 0 0 2px rgba(255,255,255,0.7);
+      opacity: 0.9;
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    .controls button {
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      padding: 0.4rem 0.7rem;
+      font-size: 0.85rem;
+      cursor: pointer;
+      background: #fafafa;
+      transition: background 0.1s ease, transform 0.08s ease;
+    }
+    .controls button:hover {
+      background: #f0f0f0;
+    }
+    .controls button:active {
+      transform: scale(0.97);
+    }
+    .controls button.primary {
+      background: #1976d2;
+      color: #fff;
+      border-color: #1976d2;
+    }
+    .controls button.primary:hover {
+      background: #145ca3;
+    }
+    .undo-flash {
+      animation: undoFlash 0.2s ease;
+    }
+    @keyframes undoFlash {
+      from { background: #ffe082; }
+      to   { background: #fafafa; }
+    }
+    .report {
+      border-top: 1px solid #ddd;
+      padding-top: 0.75rem;
+      margin-top: 0.75rem;
+      font-size: 0.9rem;
+    }
+    .report h2 {
+      font-size: 1rem;
+      margin-top: 0;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-top: 0.5rem;
+      font-size: 0.85rem;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 0.3rem 0.4rem;
+      text-align: left;
+    }
+    th {
+      background: #f3f3f3;
+    }
+    .group-row {
+      background: #f9f9f9;
+      font-weight: 600;
+    }
+    .done-banner {
+      margin-bottom: 0.75rem;
+      padding: 0.4rem 0.6rem;
+      border-radius: 4px;
+      background: #e8f5e9;
+      border: 1px solid #c8e6c9;
+      font-size: 0.85rem;
+    }
+    .hint {
+      font-size: 0.8rem;
+      color: #666;
+      margin-top: 0.25rem;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- React + ReactDOM + Babel from CDN -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Your app code -->
+  <script type="text/babel">
+    const { useState, useEffect, useCallback } = React;
+
+    const CELL_TYPES = [
+      { key: "d", label: "Myeloblast",       abbr: "Myelbl",  group: "granulocytic", color: "#f213b6" },
+      { key: "f", label: "Promyelocyte",     abbr: "Promyl",  group: "granulocytic", color: "#e622b8" },
+      { key: "g", label: "Myelocyte",        abbr: "Myel",    group: "granulocytic", color: "#bb1888" },
+      { key: "h", label: "Metamyelocyte",    abbr: "Meta",    group: "granulocytic", color: "#9c137c" },
+      { key: "j", label: "Neutrophil (seg)", abbr: "Neut",    group: "granulocytic", color: "#e91e63" },
+      { key: "k", label: "Eosinophil",       abbr: "Eosin",   group: "granulocytic", color: "#bc811a" },
+      { key: "l", label: "Basophil",         abbr: "Baso",    group: "granulocytic", color: "#9b59b6" },
+      { key: "c", label: "Monocyte",         abbr: "Mono",    group: "other",        color: "#16a085" },
+      { key: "v", label: "Lymphocyte",       abbr: "Lymph",   group: "other",        color: "#30849d" },
+      { key: "b", label: "Plasma cell",      abbr: "Plasma",  group: "other",        color: "#f06705" },
+      { key: "n", label: "Erythroblast",     abbr: "Eryth",   group: "erythroid",    color: "#035890" },
+      { key: "m", label: "Other",            abbr: "Other",   group: "other",        color: "#2ecc71" },
+    ];
+
+    const KEY_MAP = Object.fromEntries(CELL_TYPES.map(c => [c.key, c]));
+    const TARGET = 500;
+
+    const initCounts = () =>
+      Object.fromEntries(CELL_TYPES.map(c => [c.key, 0]));
+
+    function flash(setter) {
+      setter(true);
+      setTimeout(() => setter(false), 120);
+    }
+
+    function BonemarrowCounter() {
+      const [counts, setCounts] = useState(initCounts);
+      const [history, setHistory] = useState([]);
+      const [lastKey, setLastKey] = useState(null);
+      const [flashing, setFlashing] = useState(null);
+      const [undoFlash, setUndoFlash] = useState(false);
+      const [done, setDone] = useState(false);
+      const [showReport, setShowReport] = useState(false);
+
+      const total = Object.values(counts).reduce((a, b) => a + b, 0);
+
+      const addCell = useCallback((key) => {
+        if (done) return;
+        const cell = KEY_MAP[key];
+        if (!cell) return;
+        setCounts(prev => ({ ...prev, [key]: prev[key] + 1 }));
+        setHistory(prev => [...prev, key]);
+        setLastKey(key);
+        setFlashing(key);
+        setTimeout(() => setFlashing(null), 120);
+        if (total + 1 >= TARGET) setDone(true);
+      }, [done, total]);
+
+      const undoLast = useCallback(() => {
+        if (history.length === 0) return;
+        const last = history[history.length - 1];
+        setCounts(prev => ({
+          ...prev,
+          [last]: Math.max(0, prev[last] - 1),
+        }));
+        setHistory(prev => prev.slice(0, -1));
+        setLastKey(null);
+        setDone(false);
+        flash(setUndoFlash);
+      }, [history]);
+
+      const reset = () => {
+        setCounts(initCounts());
+        setHistory([]);
+        setLastKey(null);
+        setDone(false);
+        setShowReport(false);
+      };
+
+      useEffect(() => {
+        const handler = (e) => {
+          if (e.repeat) return;
+          const k = e.key.toLowerCase();
+          if (k === "x") {
+            undoLast();
+            return;
+          }
+          if (k === "z" && (e.ctrlKey || e.metaKey)) {
+            undoLast();
+            return;
+          }
+          if (KEY_MAP[k]) addCell(k);
+        };
+        window.addEventListener("keydown", handler);
+        return () => window.removeEventListener("keydown", handler);
+      }, [addCell, undoLast]);
+
+      const pct = (key) =>
+        total === 0 ? 0 : ((counts[key] / total) * 100).toFixed(1);
+
+      const groups = [
+        {
+          label: "Granulocytic Series",
+          keys: CELL_TYPES.filter(c => c.group === "granulocytic").map(c => c.key),
+        },
+        {
+          label: "Erythroid Series",
+          keys: CELL_TYPES.filter(c => c.group === "erythroid").map(c => c.key),
+        },
+        {
+          label: "Other",
+          keys: CELL_TYPES.filter(c => c.group === "other").map(c => c.key),
+        },
+      ];
+
+      const myeloidTotal = groups[0].keys.reduce((s, k) => s + counts[k], 0);
+      const erythroidTotal = groups[1].keys.reduce((s, k) => s + counts[k], 0);
+      const mer = erythroidTotal > 0
+        ? (myeloidTotal / erythroidTotal).toFixed(2)
+        : "—";
+
+      return (
+        <div className="app">
+          <h1>Bone Marrow Differential Counter</h1>
+
+          <div className="summary">
+            <div className="summary-item">
+              <strong>Total cells:</strong> {total} / {TARGET}
+            </div>
+            <div className="summary-item">
+              <strong>Last key:</strong>{" "}
+              {lastKey ? `${lastKey.toUpperCase()} (${KEY_MAP[lastKey].abbr})` : "—"}
+            </div>
+            <div className="summary-item">
+              <strong>Myeloid total:</strong> {myeloidTotal}
+            </div>
+            <div className="summary-item">
+              <strong>Erythroid total:</strong> {erythroidTotal}
+            </div>
+            <div className="summary-item">
+              <strong>M:E ratio:</strong> {mer}
+            </div>
+          </div>
+
+          {done && (
+            <div className="done-banner">
+              Target of {TARGET} cells reached. You can still undo or review the report.
+            </div>
+          )}
+
+          <div className="cells">
+            {CELL_TYPES.map(cell => (
+              <button
+                key={cell.key}
+                className={
+                  "cell-btn" +
+                  (flashing === cell.key ? " flash" : "")
+                }
+                style={{ backgroundColor: cell.color }}
+                onClick={() => addCell(cell.key)}
+              >
+                <span className="label">
+                  {cell.label} ({cell.abbr})
+                </span>
+                <span className="meta">
+                  Key: <strong>{cell.key.toUpperCase()}</strong> · Count: {counts[cell.key]} · {pct(cell.key)}%
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <div className="controls">
+            <button
+              onClick={undoLast}
+              className={undoFlash ? "undo-flash" : ""}
+              title="Undo last (X or Ctrl+Z)"
+            >
+              Undo last (X / Ctrl+Z)
+            </button>
+            <button onClick={reset}>
+              Reset
+            </button>
+            <button
+              className="primary"
+              onClick={() => setShowReport(s => !s)}
+            >
+              {showReport ? "Hide report" : "Show report"}
+            </button>
+          </div>
+
+          <div className="hint">
+            Keyboard shortcuts: press the letter for each cell type (e.g. <strong>D</strong> for Myeloblast, <strong>J</strong> for Neutrophil, <strong>N</strong> for Erythroblast).  
+            Use <strong>X</strong> or <strong>Ctrl+Z</strong> to undo.
+          </div>
+
+          {showReport && (
+            <div className="report">
+              <h2>Summary report</h2>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Group</th>
+                    <th>Cell type</th>
+                    <th>Key</th>
+                    <th>Count</th>
+                    <th>%</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {groups.map(group => (
+                    <React.Fragment key={group.label}>
+                      <tr className="group-row">
+                        <td colSpan="5">{group.label}</td>
+                      </tr>
+                      {group.keys.map(k => {
+                        const cell = KEY_MAP[k];
+                        return (
+                          <tr key={k}>
+                            <td></td>
+                            <td>{cell.label}</td>
+                            <td>{cell.key.toUpperCase()}</td>
+                            <td>{counts[k]}</td>
+                            <td>{pct(k)}%</td>
+                          </tr>
+                        );
+                      })}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<BonemarrowCounter />);
+  </script>
+</body>
+</html>
