@@ -161,18 +161,18 @@
     const { useState, useEffect, useCallback } = React;
 
     const CELL_TYPES = [
-      { key: "d", label: "Myeloblast",       abbr: "Myelbl",  group: "granulocytic", color: "#f213b6" },
-      { key: "f", label: "Promyelocyte",     abbr: "Promyl",  group: "granulocytic", color: "#e622b8" },
-      { key: "g", label: "Myelocyte",        abbr: "Myel",    group: "granulocytic", color: "#bb1888" },
-      { key: "h", label: "Metamyelocyte",    abbr: "Meta",    group: "granulocytic", color: "#9c137c" },
-      { key: "j", label: "Neutrophil", abbr: "Neut",    group: "granulocytic", color: "#e91e63" },
-      { key: "k", label: "Eosinophil",       abbr: "Eosin",   group: "granulocytic", color: "#bc811a" },
-      { key: "l", label: "Basophil",         abbr: "Baso",    group: "granulocytic", color: "#9b59b6" },
-      { key: "c", label: "Monocyte",         abbr: "Mono",    group: "other",        color: "#16a085" },
-      { key: "v", label: "Lymphocyte",       abbr: "Lymph",   group: "other",        color: "#30849d" },
-      { key: "b", label: "Plasma cell",      abbr: "Plasma",  group: "other",        color: "#f06705" },
-      { key: "n", label: "Erythroblast",     abbr: "Eryth",   group: "erythroid",    color: "#035890" },
-      { key: "m", label: "Other",            abbr: "Other",   group: "other",        color: "#2ecc71" },
+      { key: "d", label: "Myeloblast",       group: "granulocytic", color: "#f213b6" },
+      { key: "f", label: "Promyelocyte",     group: "granulocytic", color: "#e622b8" },
+      { key: "g", label: "Myelocyte",        group: "granulocytic", color: "#bb1888" },
+      { key: "h", label: "Metamyelocyte",    group: "granulocytic", color: "#9c137c" },
+      { key: "j", label: "Neutrophil",       group: "granulocytic", color: "#e91e63" },
+      { key: "k", label: "Eosinophil",       group: "granulocytic", color: "#bc811a" },
+      { key: "l", label: "Basophil",         group: "granulocytic", color: "#9b59b6" },
+      { key: "c", label: "Monocyte",         group: "granulocytic",        color: "#16a085" },
+      { key: "v", label: "Lymphocyte",       group: "other",        color: "#30849d" },
+      { key: "b", label: "Plasma cell",      group: "other",        color: "#f06705" },
+      { key: "n", label: "Erythroblast",    group: "erythroid",    color: "#035890" },
+      { key: "m", label: "Other",           group: "other",        color: "#2ecc71" },
     ];
 
     const KEY_MAP = Object.fromEntries(CELL_TYPES.map(c => [c.key, c]));
