@@ -6,11 +6,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <!-- Simple styling -->
   <style>
+    :root {
+      --bg: #f5f5f5;
+      --card: #fff;
+      --muted: #666;
+    }
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       margin: 0;
       padding: 1rem;
-      background: #f5f5f5;
+      background: var(--bg);
       color: #333;
     }
     h1 {
@@ -20,7 +25,7 @@
     .app {
       max-width: 900px;
       margin: 0 auto;
-      background: #fff;
+      background: var(--card);
       border-radius: 8px;
       padding: 1rem 1.5rem 1.5rem;
       box-shadow: 0 2px 6px rgba(0,0,0,0.08);
@@ -47,27 +52,31 @@
     .cell-btn {
       border: none;
       border-radius: 6px;
-      padding: 0.5rem 0.6rem;
+      padding: 0.6rem 0.8rem;
       text-align: left;
       cursor: pointer;
-      color: #fff;
       display: flex;
       flex-direction: column;
       gap: 0.15rem;
       transition: transform 0.08s ease, box-shadow 0.08s ease, opacity 0.12s ease;
       font-size: 0.85rem;
+      min-height: 56px; /* better touch target */
     }
     .cell-btn span.label {
       font-weight: 600;
     }
     .cell-btn span.meta {
       font-size: 0.78rem;
-      opacity: 0.9;
+      opacity: 0.95;
     }
     .cell-btn.flash {
       transform: scale(1.04);
       box-shadow: 0 0 0 2px rgba(255,255,255,0.7);
-      opacity: 0.9;
+      opacity: 0.95;
+    }
+    .cell-btn:focus {
+      outline: 3px solid rgba(21,101,192,0.9);
+      outline-offset: 2px;
     }
     .controls {
       display: flex;
@@ -143,22 +152,32 @@
     }
     .hint {
       font-size: 0.8rem;
-      color: #666;
+      color: var(--muted);
       margin-top: 0.25rem;
+    }
+
+    /* respects reduced motion preference */
+    @media (prefers-reduced-motion: reduce) {
+      .cell-btn, .cell-btn.flash, .controls button { transition: none !important; }
+    }
+
+    /* small screens spacing */
+    @media (max-width: 420px) {
+      .cells { grid-template-columns: repeat(2, 1fr); }
     }
   </style>
 </head>
 <body>
-  <div id="root"></div>
+  <main id="root"></main>
 
-  <!-- React + ReactDOM + Babel from CDN -->
+  <!-- React + ReactDOM + Babel from CDN (dev convenience) -->
   <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-  <!-- Your app code -->
+  <!-- App code -->
   <script type="text/babel">
-    const { useState, useEffect, useCallback } = React;
+    const { useState, useEffect, useCallback, useRef } = React;
 
     const CELL_TYPES = [
       { key: "d", label: "Myeloblast",        abbr: "Myelbl",  group: "granulocytic", color: "#f213b6" },
@@ -186,6 +205,16 @@
       setTimeout(() => setter(false), 120);
     }
 
+    function readableTextColor(hex) {
+      if (!hex) return '#fff';
+      const c = hex.replace('#','');
+      const r = parseInt(c.substring(0,2),16)/255;
+      const g = parseInt(c.substring(2,4),16)/255;
+      const b = parseInt(c.substring(4,6),16)/255;
+      const lum = 0.2126*r + 0.7152*g + 0.0722*b;
+      return lum > 0.6 ? '#000' : '#fff';
+    }
+
     function BonemarrowCounter() {
       const [counts, setCounts] = useState(initCounts);
       const [history, setHistory] = useState([]);
@@ -194,62 +223,96 @@
       const [undoFlash, setUndoFlash] = useState(false);
       const [done, setDone] = useState(false);
       const [showReport, setShowReport] = useState(false);
+      const mountedRef = useRef(false);
+
+      // load from localStorage on first mount
+      useEffect(() => {
+        try {
+          const storedCounts = localStorage.getItem('bm_counts');
+          const storedHistory = localStorage.getItem('bm_history');
+          if (storedCounts) {
+            const parsed = JSON.parse(storedCounts);
+            // basic shape check
+            if (parsed && typeof parsed === 'object') setCounts(prev => ({ ...prev, ...parsed }));
+          }
+          if (storedHistory) {
+            const parsedH = JSON.parse(storedHistory);
+            if (Array.isArray(parsedH)) setHistory(parsedH);
+          }
+        } catch (err) {
+          console.warn('Could not load saved state', err);
+        }
+        mountedRef.current = true;
+      }, []);
+
+      // persist on change
+      useEffect(() => {
+        if (!mountedRef.current) return;
+        try {
+          localStorage.setItem('bm_counts', JSON.stringify(counts));
+          localStorage.setItem('bm_history', JSON.stringify(history));
+        } catch (err) {
+          console.warn('Could not persist state', err);
+        }
+      }, [counts, history]);
 
       const total = Object.values(counts).reduce((a, b) => a + b, 0);
 
+      // derive done from total to avoid stale closures
+      useEffect(() => {
+        setDone(total >= TARGET);
+      }, [total]);
+
       const addCell = useCallback((key) => {
-        if (done) return;
-        const cell = KEY_MAP[key];
-        if (!cell) return;
+        if (!KEY_MAP[key]) return;
         setCounts(prev => ({ ...prev, [key]: prev[key] + 1 }));
         setHistory(prev => [...prev, key]);
         setLastKey(key);
         setFlashing(key);
         setTimeout(() => setFlashing(null), 120);
-        if (total + 1 >= TARGET) setDone(true);
-      }, [done, total]);
+      }, []);
 
       const undoLast = useCallback(() => {
-        if (history.length === 0) return;
-        const last = history[history.length - 1];
-        setCounts(prev => ({
-          ...prev,
-          [last]: Math.max(0, prev[last] - 1),
-        }));
-        setHistory(prev => prev.slice(0, -1));
-        setLastKey(null);
-        setDone(false);
-        flash(setUndoFlash);
-      }, [history]);
+        setHistory(prevHist => {
+          if (prevHist.length === 0) return prevHist;
+          const last = prevHist[prevHist.length - 1];
+          setCounts(prevCounts => ({ ...prevCounts, [last]: Math.max(0, prevCounts[last] - 1) }));
+          flash(setUndoFlash);
+          setLastKey(null);
+          return prevHist.slice(0, -1);
+        });
+      }, []);
 
-      const reset = () => {
+      const reset = useCallback((opts = { clearSaved: false }) => {
         setCounts(initCounts());
         setHistory([]);
         setLastKey(null);
         setDone(false);
         setShowReport(false);
-      };
+        if (opts.clearSaved) {
+          try { localStorage.removeItem('bm_counts'); localStorage.removeItem('bm_history'); } catch (e) {}
+        }
+      }, []);
 
+      // safer keyboard handling: ignore when typing in inputs
       useEffect(() => {
         const handler = (e) => {
           if (e.repeat) return;
-          const k = e.key.toLowerCase();
-          if (k === "x") {
-            undoLast();
-            return;
-          }
-          if (k === "z" && (e.ctrlKey || e.metaKey)) {
-            undoLast();
-            return;
-          }
+          const target = e.target;
+          const tag = target && target.tagName && target.tagName.toLowerCase();
+          if (tag === 'input' || tag === 'textarea' || tag === 'select' || target.isContentEditable) return;
+
+          const k = (e.key || '').toLowerCase();
+          if (k === 'x') { undoLast(); return; }
+          if (k === 'z' && (e.ctrlKey || e.metaKey)) { undoLast(); return; }
           if (KEY_MAP[k]) addCell(k);
         };
-        window.addEventListener("keydown", handler);
-        return () => window.removeEventListener("keydown", handler);
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
       }, [addCell, undoLast]);
 
       const pct = (key) =>
-        total === 0 ? 0 : ((counts[key] / total) * 100).toFixed(1);
+        total === 0 ? '0.0' : ((counts[key] / total) * 100).toFixed(1);
 
       const groups = [
         {
@@ -273,16 +336,21 @@
         : "—";
 
       return (
-        <div className="app">
-          <h1>Bone Marrow Differential Counter</h1>
+        <div className="app" role="application" aria-labelledby="app-title">
+          <header>
+            <h1 id="app-title">Bone Marrow Differential Counter</h1>
+            <div aria-live="polite" style={{position:'absolute',left:'-9999px'}}>
+              Total {total} cells. Myeloid {myeloidTotal}. Erythroid {erythroidTotal}.
+            </div>
+          </header>
 
           <div className="summary">
             <div className="summary-item">
               <strong>Total cells:</strong> {total} / {TARGET}
             </div>
             <div className="summary-item">
-              <strong>Last key:</strong>{" "}
-              {lastKey ? `${lastKey.toUpperCase()} (${KEY_MAP[lastKey].abbr})` : "—"}
+              <strong>Last key:</strong>{' '}
+              {lastKey ? `${lastKey.toUpperCase()} (${KEY_MAP[lastKey].abbr})` : '—'}
             </div>
             <div className="summary-item">
               <strong>Myeloid total:</strong> {myeloidTotal}
@@ -309,8 +377,10 @@
                   "cell-btn" +
                   (flashing === cell.key ? " flash" : "")
                 }
-                style={{ backgroundColor: cell.color }}
+                style={{ backgroundColor: cell.color, color: readableTextColor(cell.color) }}
                 onClick={() => addCell(cell.key)}
+                aria-label={`${cell.label} (${cell.abbr}) — press ${cell.key.toUpperCase()}`}
+                title={`${cell.label} — key ${cell.key.toUpperCase()}`}
               >
                 <span className="label">
                   {cell.label} ({cell.abbr})
@@ -327,15 +397,16 @@
               onClick={undoLast}
               className={undoFlash ? "undo-flash" : ""}
               title="Undo last (X or Ctrl+Z)"
+              aria-label="Undo last action"
             >
               Undo last (X / Ctrl+Z)
             </button>
-            <button onClick={reset}>
-              Reset
-            </button>
+            <button onClick={() => reset({ clearSaved: false })} aria-label="Reset counts">Reset</button>
+            <button onClick={() => reset({ clearSaved: true })} aria-label="Reset and clear saved data">Reset & Clear Saved</button>
             <button
               className="primary"
               onClick={() => setShowReport(s => !s)}
+              aria-pressed={showReport}
             >
               {showReport ? "Hide report" : "Show report"}
             </button>
@@ -343,11 +414,11 @@
 
           <div className="hint">
             Keyboard shortcuts: press the letter for each cell type (e.g. <strong>D</strong> for Myeloblast, <strong>J</strong> for Neutrophil, <strong>N</strong> for Erythroblast).  
-            Use <strong>X</strong> or <strong>Ctrl+Z</strong> to undo.
+            Use <strong>X</strong> or <strong>Ctrl+Z</strong> to undo. Shortcuts are disabled while typing in inputs.
           </div>
 
           {showReport && (
-            <div className="report">
+            <div className="report" aria-live="polite">
               <h2>Summary report</h2>
               <table>
                 <thead>
